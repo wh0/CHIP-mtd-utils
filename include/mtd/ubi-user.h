@@ -168,6 +168,10 @@
 /* Re-name volumes */
 #define UBI_IOCRNVOL _IOW(UBI_IOC_MAGIC, 3, struct ubi_rnvol_req)
 
+#define UBI_IOCRPEB _IOW(UBI_IOC_MAGIC, 4, int32_t)
+#define UBI_IOCSPEB _IOW(UBI_IOC_MAGIC, 5, int32_t)
+#define UBI_IOCSTATS _IOW(UBI_IOC_MAGIC, 6, struct ubi_stats_req)
+
 /* ioctl commands of the UBI control character device */
 
 #define UBI_CTRL_IOC_MAGIC 'o'
@@ -436,5 +440,19 @@ struct ubi_set_vol_prop_req {
 struct ubi_blkcreate_req {
 	int8_t  padding[128];
 }  __attribute__((packed));
+
+struct ubi_stats_entry {
+       int32_t pnum;
+       int32_t ec;
+       int32_t rc;
+       int32_t padding;
+} __attribute__((packed));
+
+struct ubi_stats_req {
+       int32_t req_len;
+       int32_t req_pnum;
+       int32_t padding[2];
+       struct ubi_stats_entry stats[0];
+} __attribute__((packed));
 
 #endif /* __UBI_USER_H__ */
