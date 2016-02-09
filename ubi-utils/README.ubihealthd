@@ -1,0 +1,38 @@
+# ubihealthd
+
+ubihealthd is a small daemon which monitors ubi devices.
+The main purpose of this daemon is to read and scrub
+all PEBs of a given device over a specified amount of time.
+Additionally if a PEBs was read above a given threshold
+the complete PEB will be read to detect and fix read-disturbs.
+
+## Basic Algorithm
+
+ubihealthd currently uses 2 lists to keep track of the PEB
+which should be read/scrubbed periodically.
+Additionally after each statistics update (default: every 60 seconds)
+a PEB read is performed if the number of reads since the last time
+passes a given threshold.
+In order to allow the daemon to operate after a reboot or restart of
+the daemon, the statistics are written to a given file on shutdown or
+as soon as a SIGUSR1 is received.
+
+## Statistics File format
+The statistics file is a binary format and written as follows.
+    * number of PEBs (int64_t)
+    * next scheduled PEB for reads (int64_t)
+    * next scheduled PEB for scrubbing (int64_t)
+    * dump of all PEBs (struct peb_info)
+
+## Usage:
+ubihealthd [OPTIONS]
+
+OPTIONS
+  -h, --help		Show this message
+  -d, --device		Device to be monitored (default: /dev/ubi0)
+  -f, --file		Path to statistics save file
+  -r, --read_complete	Timeframe for reading all PEBs in seconds
+  -s, --scrub_complete	Timeframe for scrubbing all PEBs in seconds
+  -x, --read_threshold	Number of reads between two stats updates
+			which will trigger a PEB read
+  -v, --verbosity	Set log level (0-4)
