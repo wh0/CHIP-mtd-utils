@@ -36,6 +36,8 @@ extern "C" {
  * struct ubigen_info - libubigen information.
  * @leb_size: logical eraseblock size
  * @peb_size: size of the physical eraseblock
+ * @consolidated_peb_size: size of the physical eraseblock
+ * @clebs_per_peb: Number of consolidated LEB per PEB
  * @min_io_size: minimum input/output unit size
  * @vid_hdr_offs: offset of the VID header
  * @data_offs: data offset
@@ -47,7 +49,9 @@ extern "C" {
 struct ubigen_info
 {
 	int leb_size;
+	int consolidated_peb_size;
 	int peb_size;
+	int clebs_per_peb;
 	int min_io_size;
 	int vid_hdr_offs;
 	int data_offs;
@@ -100,10 +104,12 @@ struct ubigen_vol_info
  * @vid_hdr_offs: offset of the VID header
  * @ubi_ver: UBI version
  * @image_seq: UBI image sequence number
+ * @clebs_per_peb: Number of consolidated LEB per PEB, only used when
+ *		   @ubi_ver > 1.
  */
 void ubigen_info_init(struct ubigen_info *ui, int peb_size, int min_io_size,
 		      int subpage_size, int vid_hdr_offs, int ubi_ver,
-		      uint32_t image_seq);
+		      uint32_t image_seq, int clebs_per_peb);
 
 /**
  * ubigen_create_empty_vtbl - creates empty volume table.

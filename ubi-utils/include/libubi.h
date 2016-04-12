@@ -36,7 +36,7 @@ extern "C" {
 #define LIBUBI_UBI_VERSION 1
 
 /* Maximum physical eraseblock size in bytes */
-#define UBI_MAX_PEB_SZ (2*1024*1024)
+#define UBI_MAX_PEB_SZ (8*1024*1024)
 
 /* UBI library descriptor */
 typedef void * libubi_t;
