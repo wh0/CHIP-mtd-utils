@@ -462,9 +462,10 @@ int main(int argc, char * const argv[])
 	if (err)
 		return -1;
 
+	//XXX
 	ubigen_info_init(&ui, args.peb_size, args.min_io_size,
 			 args.subpage_size, args.vid_hdr_offs,
-			 args.ubi_ver, args.image_seq);
+			 args.ubi_ver, args.image_seq, 2);
 
 	verbose(args.verbose, "LEB size:                  %d", ui.leb_size);
 	verbose(args.verbose, "PEB size:                  %d", ui.peb_size);
