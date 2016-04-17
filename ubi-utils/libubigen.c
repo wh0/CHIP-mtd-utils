@@ -30,6 +30,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <string.h>
+#include <assert.h>
 
 #include <mtd/ubi-media.h>
 #include <mtd_swab.h>
@@ -94,8 +95,9 @@ static int nand_pairing_dist3_get_wunit(const struct ubigen_info *ui,
         int page = info->pair * 2;
         int dist = 3;
 
+	//printf("pair %i\n", info->pair);
+
         if (!info->group && !info->pair) {
-		printf("page: 0\n");
                 return 0;
 	}
 
@@ -107,10 +109,7 @@ static int nand_pairing_dist3_get_wunit(const struct ubigen_info *ui,
         else if (info->pair)
                 page += dist - 1;
 
-        if (page >= ui->consolidated_peb_size / ui->min_io_size)
-                return -EINVAL;
-
-	printf("page: %x\n", page);
+        assert(page < ui->consolidated_peb_size / ui->min_io_size);
 
         return page;
 }
@@ -145,6 +144,7 @@ void copy_soft_slc(const struct ubigen_info *ui, int offset, char *dst, char *sr
 
                 realoffs = mtd_pairing_info_to_wunit(ui, &dist3_pairing_scheme, &info);
                 realoffs *= ui->min_io_size;
+		assert(realoffs < ui->consolidated_peb_size);
 		memcpy(dst + realoffs, src, chunklen);
 
                 offset += chunklen;
@@ -163,9 +163,10 @@ void ubigen_info_init(struct ubigen_info *ui, int peb_size, int min_io_size,
 		vid_hdr_offs *= subpage_size;
 	}
 
-	if (ubi_ver == 1)
-		ui->clebs_per_peb = 1;
-	else
+	//TODO: prepare for new UBI versioning
+	//if (ubi_ver == 1)
+	//	ui->clebs_per_peb = 1;
+	//else
 		ui->clebs_per_peb = clebs_per_peb;
 
 	ui->consolidated_peb_size = peb_size;
@@ -383,21 +384,17 @@ int ubigen_write_volume(const struct ubigen_info *ui,
 				goto out_free1;
 			}
 		} else {
+			assert(len <= vi->usable_leb_size);
 			for (i = 0; i < ui->clebs_per_peb; i++) {
 				struct ubi_vid_hdr vid_hdr;
 				struct ubi_ec_hdr ec_hdr;
-
-				//struct ubi_vid_hdr *vid_hdr = (struct ubi_vid_hdr *)(&outbuf[ui->vid_hdr_offs + (i * ui->consolidated_peb_size)]);
-				//ubigen_init_ec_hdr(ui, (struct ubi_ec_hdr *)(outbuf + (ui->consolidated_peb_size * i)), ec);
-				//ubigen_init_vid_hdr(ui, vi, vid_hdr, lnum, inbuf + (len * i), len);
 
 				ubigen_init_ec_hdr(ui, &ec_hdr, ec);
 				ubigen_init_vid_hdr(ui, vi, &vid_hdr, lnum, inbuf + (len * i), len);
 
 				copy_soft_slc(ui, 0, outbuf + (ui->consolidated_peb_size * i), (void *)&ec_hdr, sizeof(ec_hdr));
-				copy_soft_slc(ui, ui->min_io_size, outbuf + (ui->consolidated_peb_size * i), (void *)&vid_hdr, sizeof(vid_hdr));
-				//XXX
-				copy_soft_slc(ui, ui->min_io_size * 2, outbuf + (ui->consolidated_peb_size * i), inbuf + (len * i), len);
+				copy_soft_slc(ui, ui->vid_hdr_offs, outbuf + (ui->consolidated_peb_size * i), (void *)&vid_hdr, sizeof(vid_hdr));
+				copy_soft_slc(ui, ui->data_offs, outbuf + (ui->consolidated_peb_size * i), inbuf + (len * i), len);
 
 				lnum++;
 			}
@@ -524,6 +521,8 @@ int ubigen_write_layout_vol(const struct ubigen_info *ui, int peb1, int peb2,
 
 	if (ui->clebs_per_peb > 1)
 		return __write_layout_vol2(ui, &vi, peb1, ec1, vtbl, fd);
+
+	assert(0);
 
 	ret = __write_layout_vol(ui, &vi, peb1, 0, ec1, vtbl, fd);
 	if (ret)
