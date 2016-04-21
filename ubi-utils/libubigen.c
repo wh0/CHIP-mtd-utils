@@ -304,29 +304,22 @@ static bool is_empty(char *buf, int len)
 	return true;
 }
 
-static bool can_consolidate(const struct ubigen_info *ui, const struct ubigen_vol_info *vi, char *buf)
+static bool can_consolidate(const struct ubigen_info *ui,
+			    const struct ubigen_vol_info *vi,
+			    char *buf)
 {
-	int i, n = 0;
+	char *last_page = buf + vi->usable_leb_size - ui->min_io_size;
 
-	for (i = 0; i < ui->clebs_per_peb; i++) {
-		char *last_page = buf + ((i + 1) * vi->usable_leb_size) - ui->min_io_size;
-
-		if (!is_empty(last_page, ui->min_io_size)) {
-			n++;
-			continue;
-		}
-
-	}
-
-	return n == ui->clebs_per_peb;
+	return !is_empty(last_page, ui->min_io_size);
 }
 
 int ubigen_write_volume(const struct ubigen_info *ui,
 			const struct ubigen_vol_info *vi, long long ec,
 			long long bytes, int in, int out)
 {
-	int len = vi->usable_leb_size, rd, lnum = 0;
-	char *inbuf, *outbuf;
+	int len = vi->usable_leb_size, rd, lnum = 0, conspos = 0;
+	char *inbuf, *consbuf, *outbuf;
+	struct ubi_vid_hdr *vid_hdrs;
 
 	if (vi->id >= ui->max_volumes) {
 		errmsg("too high volume id %d, max. volumes is %d",
@@ -342,26 +335,34 @@ int ubigen_write_volume(const struct ubigen_info *ui,
 		return -1;
 	}
 
-	inbuf = malloc(len * ui->clebs_per_peb);
+	inbuf = malloc(len);
 	if (!inbuf)
 		return sys_errmsg("cannot allocate %d bytes of memory",
 				  len * ui->clebs_per_peb);
-	outbuf = malloc(ui->consolidated_peb_size * ui->clebs_per_peb);
+
+	outbuf = malloc(ui->consolidated_peb_size * 2);
 	if (!outbuf) {
 		sys_errmsg("cannot allocate %d bytes of memory", ui->consolidated_peb_size);
 		goto out_free;
 	}
 
-	memset(outbuf, 0xFF, ui->consolidated_peb_size * ui->clebs_per_peb);
+	consbuf = outbuf + ui->consolidated_peb_size;
+	vid_hdrs = (struct ubi_vid_hdr *)(consbuf + ui->vid_hdr_offs);
+	memset(outbuf, 0xFF, ui->consolidated_peb_size);
+	memset(consbuf, 0xFF, ui->consolidated_peb_size);
 	ubigen_init_ec_hdr(ui, (struct ubi_ec_hdr *)outbuf, ec);
+	ubigen_init_ec_hdr(ui, (struct ubi_ec_hdr *)consbuf, ec);
 
 	while (bytes) {
-		int i, readlen = len * ui->clebs_per_peb;
+		int readlen = len;
 		bool full;
 
-		if (bytes < readlen)
+		if (bytes < readlen) {
+			memset(inbuf + bytes, 0xFF, readlen - bytes);
 			readlen = bytes;
+		}
 		bytes -= readlen;
+
 
 		rd = read(in, inbuf, readlen);
 		if (rd != readlen) {
@@ -371,38 +372,64 @@ int ubigen_write_volume(const struct ubigen_info *ui,
 
 		full = can_consolidate(ui, vi, inbuf);
 		if (full) {
-			struct ubi_vid_hdr *vid_hdrs = (struct ubi_vid_hdr *)(&outbuf[ui->vid_hdr_offs]);
-
-			for (i = 0; i < ui->clebs_per_peb; i++) {
-				ubigen_init_vid_hdr(ui, vi, &vid_hdrs[i], lnum, inbuf + (len * i), len);
-				memcpy(outbuf + ui->data_offs + (len * i), inbuf + (len *i), len);
-				lnum++;
+			if (!conspos) {
+				memset(consbuf + ui->vid_hdr_offs, 0,
+				       ui->min_io_size);
+				memset(consbuf + ui->data_offs, 0xff,
+				       ui->leb_size);
 			}
+			ubigen_init_vid_hdr(ui, vi, &vid_hdrs[conspos],
+					    lnum, inbuf, len);
+			memcpy(consbuf + ui->data_offs + (len * conspos),
+			       inbuf, len);
 
-			if (write(out, outbuf, ui->consolidated_peb_size) != ui->consolidated_peb_size) {
-				sys_errmsg("cannot write %d bytes to the output file", ui->consolidated_peb_size);
-				goto out_free1;
+			if (++conspos == ui->clebs_per_peb) {
+				if (write(out, consbuf, ui->consolidated_peb_size) !=
+				    ui->consolidated_peb_size) {
+					sys_errmsg("cannot write %d bytes to the output file",
+						   ui->consolidated_peb_size);
+					goto out_free1;
+				}
+				conspos = 0;
 			}
+			lnum++;
 		} else {
+			struct ubi_vid_hdr vid_hdr;
+
 			assert(len <= vi->usable_leb_size);
-			for (i = 0; i < ui->clebs_per_peb; i++) {
-				struct ubi_vid_hdr vid_hdr;
-				struct ubi_ec_hdr ec_hdr;
 
-				ubigen_init_ec_hdr(ui, &ec_hdr, ec);
-				ubigen_init_vid_hdr(ui, vi, &vid_hdr, lnum, inbuf + (len * i), len);
+			memset(outbuf + ui->vid_hdr_offs, 0, ui->min_io_size);
+			memset(outbuf + ui->data_offs, 0xff, ui->leb_size);
 
-				copy_soft_slc(ui, 0, outbuf + (ui->consolidated_peb_size * i), (void *)&ec_hdr, sizeof(ec_hdr));
-				copy_soft_slc(ui, ui->vid_hdr_offs, outbuf + (ui->consolidated_peb_size * i), (void *)&vid_hdr, sizeof(vid_hdr));
-				copy_soft_slc(ui, ui->data_offs, outbuf + (ui->consolidated_peb_size * i), inbuf + (len * i), len);
+			ubigen_init_vid_hdr(ui, vi, &vid_hdr, lnum, inbuf, len);
+			copy_soft_slc(ui, ui->vid_hdr_offs, outbuf, (void *)&vid_hdr, sizeof(vid_hdr));
+			copy_soft_slc(ui, ui->data_offs, outbuf, inbuf, len);
+			lnum++;
 
-				lnum++;
-			}
-
-			if (write(out, outbuf, ui->consolidated_peb_size * ui->clebs_per_peb) != ui->consolidated_peb_size * ui->clebs_per_peb) {
-				sys_errmsg("cannot write %d bytes to the output file", ui->consolidated_peb_size * ui->clebs_per_peb);
+			if (write(out, outbuf, ui->consolidated_peb_size) !=
+			    ui->consolidated_peb_size) {
+				sys_errmsg("cannot write %d bytes to the output file",
+					   ui->consolidated_peb_size);
 				goto out_free1;
 			}
+		}
+	}
+
+	if (conspos) {
+		if (conspos > 1) {
+			memcpy(outbuf, consbuf, ui->consolidated_peb_size);
+		} else {
+			memcpy(outbuf + ui->vid_hdr_offs,
+			       vid_hdrs, sizeof(*vid_hdrs));
+			copy_soft_slc(ui, ui->data_offs, outbuf,
+				      consbuf + ui->data_offs + len, len);
+		}
+
+		if (write(out, outbuf, ui->consolidated_peb_size) !=
+		    ui->consolidated_peb_size) {
+			sys_errmsg("cannot write %d bytes to the output file",
+				   ui->consolidated_peb_size);
+			goto out_free1;
 		}
 	}
 
@@ -435,6 +462,7 @@ static int __write_layout_vol(const struct ubigen_info *ui, const struct ubigen_
 	memcpy(outbuf + ui->data_offs, vtbl, ui->vtbl_size);
 	memset(outbuf + ui->data_offs + ui->vtbl_size, 0xFF,
 	       ui->peb_size - ui->data_offs - ui->vtbl_size);
+	memset(outbuf + ui->vid_hdr_offs, 0, ui->min_io_size);
 
 	seek = (off_t) peb * ui->peb_size;
 	if (lseek(fd, seek, SEEK_SET) != seek) {
@@ -471,8 +499,9 @@ static int __write_layout_vol2(const struct ubigen_info *ui, const struct ubigen
 		return sys_errmsg("failed to allocate %d bytes",
 				  ui->consolidated_peb_size);
 
-	memset(outbuf, 0xFF, ui->consolidated_peb_size);
+	memset(outbuf, 0x00, ui->consolidated_peb_size);
 	vid_hdrs = (struct ubi_vid_hdr *)(&outbuf[ui->vid_hdr_offs]);
+	memset(outbuf + ui->vid_hdr_offs, 0, ui->min_io_size);
 
 	seek = (off_t) peb * ui->consolidated_peb_size;
 	if (lseek(fd, seek, SEEK_SET) != seek) {
