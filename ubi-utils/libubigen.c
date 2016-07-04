@@ -422,7 +422,7 @@ int ubigen_write_volume(const struct ubigen_info *ui,
 			memcpy(outbuf + ui->vid_hdr_offs,
 			       vid_hdrs, sizeof(*vid_hdrs));
 			copy_soft_slc(ui, ui->data_offs, outbuf,
-				      consbuf + ui->data_offs + len, len);
+				      consbuf + ui->data_offs, len);
 		}
 
 		if (write(out, outbuf, ui->consolidated_peb_size) !=
