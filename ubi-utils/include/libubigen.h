@@ -32,6 +32,40 @@
 extern "C" {
 #endif
 
+struct ubigen_info;
+
+//TODO: move into libmtd or something like that...
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+/**
+ * struct nand_pairing_info - Page pairing information
+ *
+ * @pair: represent the pair index in the paired pages table.For example, if
+ *        page 0 and page 2 are paired together they form the first pair.
+ * @group: the group represent the bit position in the cell. For example,
+ *         page 0 uses bit 0 and is thus part of group 0.
+ */
+struct nand_pairing_info {
+        int pair;
+        int group;
+};
+
+/**
+ * struct nand_pairing_scheme - Page pairing information
+ *
+ * @ngroups: number of groups. Should be related to the number of bits
+ *           per cell.
+ * @get_info: get the paring info of a given write-unit (ie page). This
+ *            function should fill the info struct passed in argument.
+ * @get_page: convert paring information into a write-unit (page) number.
+ */
+struct nand_pairing_scheme {
+        int ngroups;
+        void (*get_info)(const struct ubigen_info *ui, int wunit,
+                         struct nand_pairing_info *info);
+        int (*get_wunit)(const struct ubigen_info *ui,
+                         const struct nand_pairing_info *info);
+};
+
 /**
  * struct ubigen_info - libubigen information.
  * @leb_size: logical eraseblock size
@@ -59,6 +93,7 @@ struct ubigen_info
 	int vtbl_size;
 	int max_volumes;
 	uint32_t image_seq;
+	const struct nand_pairing_scheme *pairing_scheme;
 };
 
 /**
@@ -109,7 +144,7 @@ struct ubigen_vol_info
  */
 void ubigen_info_init(struct ubigen_info *ui, int peb_size, int min_io_size,
 		      int subpage_size, int vid_hdr_offs, int ubi_ver,
-		      uint32_t image_seq, int clebs_per_peb);
+		      uint32_t image_seq, const char *pairing_scheme);
 
 /**
  * ubigen_create_empty_vtbl - creates empty volume table.

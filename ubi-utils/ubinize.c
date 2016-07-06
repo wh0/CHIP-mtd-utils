@@ -70,6 +70,8 @@ static const char optionsstr[] =
 "                             (default is 1)\n"
 "-Q, --image-seq=<num>        32-bit UBI image sequence number to use\n"
 "                             (by default a random number is picked)\n"
+"-M, --mlc=<pairing-scheme>   MLC NAND mode. Supported pairing schemes:\n"
+"                             \"dist3\"\n"
 "-v, --verbose                be verbose\n"
 "-h, --help                   print help message\n"
 "-V, --version                print program version";
@@ -125,6 +127,7 @@ static const struct option long_options[] = {
 	{ .name = "erase-counter",  .has_arg = 1, .flag = NULL, .val = 'e' },
 	{ .name = "ubi-ver",        .has_arg = 1, .flag = NULL, .val = 'x' },
 	{ .name = "image-seq",      .has_arg = 1, .flag = NULL, .val = 'Q' },
+	{ .name = "mlc",            .has_arg = 1, .flag = NULL, .val = 'M' },
 	{ .name = "verbose",        .has_arg = 0, .flag = NULL, .val = 'v' },
 	{ .name = "help",           .has_arg = 0, .flag = NULL, .val = 'h' },
 	{ .name = "version",        .has_arg = 0, .flag = NULL, .val = 'V' },
@@ -143,6 +146,7 @@ struct args {
 	int ubi_ver;
 	uint32_t image_seq;
 	int verbose;
+	const char *pairing_scheme;
 	dictionary *dict;
 };
 
@@ -162,7 +166,7 @@ static int parse_opt(int argc, char * const argv[])
 		int key, error = 0;
 		unsigned long int image_seq;
 
-		key = getopt_long(argc, argv, "o:p:m:s:O:e:x:Q:vhV", long_options, NULL);
+		key = getopt_long(argc, argv, "o:p:m:s:O:e:x:Q:M:vhV", long_options, NULL);
 		if (key == -1)
 			break;
 
@@ -220,6 +224,9 @@ static int parse_opt(int argc, char * const argv[])
 			if (error || image_seq > 0xFFFFFFFF)
 				return errmsg("bad UBI image sequence number: \"%s\"", optarg);
 			args.image_seq = image_seq;
+			break;
+		case 'M':
+			args.pairing_scheme = optarg;
 			break;
 
 		case 'v':
@@ -465,7 +472,7 @@ int main(int argc, char * const argv[])
 	//XXX
 	ubigen_info_init(&ui, args.peb_size, args.min_io_size,
 			 args.subpage_size, args.vid_hdr_offs,
-			 args.ubi_ver, args.image_seq, 2);
+			 args.ubi_ver, args.image_seq, args.pairing_scheme);
 
 	verbose(args.verbose, "LEB size:                  %d", ui.leb_size);
 	verbose(args.verbose, "PEB size:                  %d", ui.peb_size);

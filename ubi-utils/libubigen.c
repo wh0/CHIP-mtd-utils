@@ -38,40 +38,8 @@
 #include <crc32.h>
 #include "common.h"
 
-//TODO: move into libmtd or something like that...
-//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-/**
- * struct nand_pairing_info - Page pairing information
- *
- * @pair: represent the pair index in the paired pages table.For example, if
- *        page 0 and page 2 are paired together they form the first pair.
- * @group: the group represent the bit position in the cell. For example,
- *         page 0 uses bit 0 and is thus part of group 0.
- */
-struct nand_pairing_info {
-        int pair;
-        int group;
-};
-
-/**
- * struct nand_pairing_scheme - Page pairing information
- *
- * @ngroups: number of groups. Should be related to the number of bits
- *           per cell.
- * @get_info: get the paring info of a given write-unit (ie page). This
- *            function should fill the info struct passed in argument.
- * @get_page: convert paring information into a write-unit (page) number.
- */
-struct nand_pairing_scheme {
-        int ngroups;
-        void (*get_info)(const struct ubigen_info *ui, int wunit,
-                         struct nand_pairing_info *info);
-        int (*get_wunit)(const struct ubigen_info *ui,
-                         const struct nand_pairing_info *info);
-};
-
 static void nand_pairing_dist3_get_info(const struct ubigen_info *ui, int page,
-                                        struct nand_pairing_info *info)
+					struct nand_pairing_info *info)
 {
         int lastpage = (ui->consolidated_peb_size / ui->min_io_size) - 1;
         int dist = 3;
@@ -89,17 +57,14 @@ static void nand_pairing_dist3_get_info(const struct ubigen_info *ui, int page,
 }
 
 static int nand_pairing_dist3_get_wunit(const struct ubigen_info *ui,
-                                        const struct nand_pairing_info *info)
+					const struct nand_pairing_info *info)
 {
         int lastpair = ((ui->consolidated_peb_size / ui->min_io_size) - 1) / 2;
         int page = info->pair * 2;
         int dist = 3;
 
-	//printf("pair %i\n", info->pair);
-
-        if (!info->group && !info->pair) {
+        if (!info->group && !info->pair)
                 return 0;
-	}
 
         if (info->pair == lastpair && info->group)
                 dist = 2;
@@ -120,10 +85,45 @@ static const struct nand_pairing_scheme dist3_pairing_scheme = {
         .get_wunit = nand_pairing_dist3_get_wunit,
 };
 
-int mtd_pairing_info_to_wunit(const struct ubigen_info *ui, const struct nand_pairing_scheme *sch,
-                              struct nand_pairing_info *info)
+static void nand_pairing_slc_get_info(const struct ubigen_info *ui,
+				      int wunit,
+				      struct nand_pairing_info *info)
 {
-        return sch->get_wunit(ui, info);
+	assert(wunit < ui->consolidated_peb_size / ui->min_io_size);
+	info->pair = wunit;
+	info->group = 0;
+}
+
+static int nand_pairing_slc_get_wunit(const struct ubigen_info *ui,
+				      const struct nand_pairing_info *info)
+{
+	if (info->group ||
+	    info->pair >= ui->consolidated_peb_size / ui->min_io_size)
+		return -EINVAL;
+
+	return info->pair;
+}
+
+static const struct nand_pairing_scheme slc_pairing_scheme = {
+	.ngroups = 1,
+	.get_info = nand_pairing_slc_get_info,
+	.get_wunit = nand_pairing_slc_get_wunit,
+};
+
+struct pairing_scheme_desc {
+	const char *name;
+	const struct nand_pairing_scheme *scheme;
+};
+
+static const struct pairing_scheme_desc pairing_schemes[] = {
+	{ "dist3", &dist3_pairing_scheme },
+	{ /* sentinel */ },
+};
+
+int mtd_pairing_info_to_wunit(const struct ubigen_info *ui,
+                              const struct nand_pairing_info *info)
+{
+        return ui->pairing_scheme->get_wunit(ui, info);
 }
 
 void copy_soft_slc(const struct ubigen_info *ui, int offset, char *dst, char *src, size_t len)
@@ -142,8 +142,9 @@ void copy_soft_slc(const struct ubigen_info *ui, int offset, char *dst, char *sr
 		else
 			chunklen = end - offset;
 
-                realoffs = mtd_pairing_info_to_wunit(ui, &dist3_pairing_scheme, &info);
+                realoffs = mtd_pairing_info_to_wunit(ui, &info);
                 realoffs *= ui->min_io_size;
+		realoffs += offset % ui->min_io_size;
 		assert(realoffs < ui->consolidated_peb_size);
 		memcpy(dst + realoffs, src, chunklen);
 
@@ -155,19 +156,34 @@ void copy_soft_slc(const struct ubigen_info *ui, int offset, char *dst, char *sr
 
 void ubigen_info_init(struct ubigen_info *ui, int peb_size, int min_io_size,
 		      int subpage_size, int vid_hdr_offs, int ubi_ver,
-		      uint32_t image_seq, int clebs_per_peb)
+		      uint32_t image_seq, const char *pairing_scheme)
 {
+	const struct nand_pairing_scheme *pscheme = &slc_pairing_scheme;
+
 	if (!vid_hdr_offs) {
 		vid_hdr_offs = UBI_EC_HDR_SIZE + subpage_size - 1;
 		vid_hdr_offs /= subpage_size;
 		vid_hdr_offs *= subpage_size;
 	}
 
+	if (pairing_scheme) {
+		const struct pairing_scheme_desc *pairing_desc;
+
+		for (pairing_desc = pairing_schemes; pairing_desc->name;
+		     pairing_desc++) {
+			if (!strcmp(pairing_scheme, pairing_desc->name))
+				break;
+		}
+
+		if (!pairing_desc->name)
+			errmsg("unknow pairing scheme (%s)", pairing_scheme);
+		else
+			pscheme = pairing_desc->scheme;
+	}
+
 	//TODO: prepare for new UBI versioning
-	//if (ubi_ver == 1)
-	//	ui->clebs_per_peb = 1;
-	//else
-		ui->clebs_per_peb = clebs_per_peb;
+	ui->clebs_per_peb = pscheme->ngroups;
+	ui->pairing_scheme = pscheme;
 
 	ui->consolidated_peb_size = peb_size;
 	ui->peb_size = ui->consolidated_peb_size / ui->clebs_per_peb;
@@ -176,6 +192,7 @@ void ubigen_info_init(struct ubigen_info *ui, int peb_size, int min_io_size,
 	ui->data_offs = vid_hdr_offs + UBI_VID_HDR_SIZE + min_io_size - 1;
 	ui->data_offs /= min_io_size;
 	ui->data_offs *= min_io_size;
+	printf("data offset = %08x vid_hdr_offs = %08x\n", ui->data_offs, ui->vid_hdr_offs);
 	ui->leb_size = ui->peb_size - ui->data_offs;
 	ui->ubi_ver = ubi_ver;
 	ui->image_seq = image_seq;
@@ -309,6 +326,9 @@ static bool can_consolidate(const struct ubigen_info *ui,
 			    char *buf)
 {
 	char *last_page = buf + vi->usable_leb_size - ui->min_io_size;
+
+	if (ui->pairing_scheme->ngroups < 2)
+		return false;
 
 	return !is_empty(last_page, ui->min_io_size);
 }
@@ -457,10 +477,11 @@ static int __write_layout_vol(const struct ubigen_info *ui, const struct ubigen_
 
 	memset(outbuf, 0xFF, ui->data_offs);
 	vid_hdr = (struct ubi_vid_hdr *)(&outbuf[ui->vid_hdr_offs]);
+	printf("data_offset %08x\n", ui->data_offs);
 	memcpy(outbuf + ui->data_offs, vtbl, ui->vtbl_size);
 	memset(outbuf + ui->data_offs + ui->vtbl_size, 0xFF,
 	       ui->peb_size - ui->data_offs - ui->vtbl_size);
-	memset(outbuf + ui->vid_hdr_offs, 0, ui->min_io_size);
+	memset(outbuf + ui->vid_hdr_offs, 0, ui->data_offs - ui->vid_hdr_offs);
 
 	seek = (off_t) peb * ui->peb_size;
 	if (lseek(fd, seek, SEEK_SET) != seek) {
@@ -548,8 +569,6 @@ int ubigen_write_layout_vol(const struct ubigen_info *ui, int peb1, int peb2,
 
 	if (ui->clebs_per_peb > 1)
 		return __write_layout_vol2(ui, &vi, peb1, ec1, vtbl, fd);
-
-	assert(0);
 
 	ret = __write_layout_vol(ui, &vi, peb1, 0, ec1, vtbl, fd);
 	if (ret)
