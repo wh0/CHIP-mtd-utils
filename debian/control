@@ -1,0 +1,18 @@
+Source: mtd-utils-mlc
+Section: utils
+Priority: extra
+Maintainer: Ben Young <software@nextthing.co>
+Build-Depends: debhelper (>=9), zlib1g-dev, libacl1-dev, liblzo2-dev, uuid-dev
+Standards-Version: 3.9.8
+Homepage: https://github.com/nextthingco/chip-mtd-utils
+
+Package: mtd-utils-mlc
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Provides: mtd-tools
+Replaces: mtd-tools
+Description: Memory Technology Device Utilities
+ Utilities for manipulating memory technology devices, such as flash
+ memory, Disk-On-Chip, or ROM.  Includes mkfs.jffs2, a tool to create
+ JFFS2 (journaling flash file system) filesystems.
+

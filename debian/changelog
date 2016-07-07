@@ -1,0 +1,5 @@
+mtd-utils-mlc (1.5.2) unstable; urgency=medium
+
+  * Temporary fix for conflicting NAND tools.
+
+ -- Ben Young <software@nextthing.co>  Wed, 06 Jul 2016 17:51:04 -0800
