@@ -4,8 +4,10 @@ ConditionFileIsExecutable=/usr/sbin/ubihealthd
 
 [Service]
 Type=forking
-ExecStart=ubihealthd -d /dev/ubi0 -f /var/cache/ubihealthd.v1.stats -r 86400 -x 100 -s 864000
+ExecStart=/usr/sbin/ubihealthd -d /dev/ubi0 -f /var/cache/ubihealthd.v1.stats -r 86400 -x 100 -s 864000
 PIDFile=/run/ubihealthd.pid
+StandardOutput=null
+Restart=on-failure
 
 [Install]
 WantedBy=basic.target
