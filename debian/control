@@ -9,8 +9,8 @@ Homepage: https://github.com/nextthingco/chip-mtd-utils
 Package: mtd-utils-mlc
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Provides: mtd-tools
-Replaces: mtd-tools
+Provides: mtd-utils
+Replaces: mtd-utils
 Description: Memory Technology Device Utilities
  Utilities for manipulating memory technology devices, such as flash
  memory, Disk-On-Chip, or ROM.  Includes mkfs.jffs2, a tool to create
