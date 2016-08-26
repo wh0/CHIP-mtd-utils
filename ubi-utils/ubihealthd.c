@@ -318,6 +318,7 @@ static int read_peb(int fd, struct peb_info *peb)
 
 static int scrub_peb(int fd, struct peb_info *peb)
 {
+	/*
 	time_t now = time(NULL);
 	log_debug("Scrubbing PEB %"PRIu64, peb->peb_num);
 	int err = ioctl (fd, UBI_IOCSPEB, &peb->peb_num);
@@ -326,6 +327,7 @@ static int scrub_peb(int fd, struct peb_info *peb)
 		return -1;
 	}
 	peb->last_read = now;
+	*/
 	return 0;
 }
 
