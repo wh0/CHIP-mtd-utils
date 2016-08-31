@@ -1,4 +1,10 @@
-mtd-utils-mlc (1.5.2) unstable; urgency=medium
+mtd-utils-mlc (1.5.2-1) unstable; urgency=medium
+
+  * ubihealthd: turn scrub_peb() into a NOP
+
+ -- Ben Young <software@nextthing.co>  Wed, 31 Aug 2016 11:26:04 -0800
+
+mtd-utils-mlc (1.5.2-0) unstable; urgency=medium
 
   * Temporary fix for conflicting NAND tools.
 
