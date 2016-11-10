@@ -71,7 +71,7 @@ static int nand_pairing_dist3_get_wunit(const struct ubigen_info *ui,
 
         if (!info->group)
                 page--;
-        else if (info->pair)
+        else
                 page += dist - 1;
 
         assert(page < ui->consolidated_peb_size / ui->min_io_size);
