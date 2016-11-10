@@ -357,12 +357,11 @@ int ubigen_write_volume(const struct ubigen_info *ui,
 
 	inbuf = malloc(len);
 	if (!inbuf)
-		return sys_errmsg("cannot allocate %d bytes of memory",
-				  len * ui->clebs_per_peb);
+		return sys_errmsg("cannot allocate %d bytes of memory", len);
 
 	outbuf = malloc(ui->consolidated_peb_size * 2);
 	if (!outbuf) {
-		sys_errmsg("cannot allocate %d bytes of memory", ui->consolidated_peb_size);
+		sys_errmsg("cannot allocate %d bytes of memory", ui->consolidated_peb_size * 2);
 		goto out_free;
 	}
 
